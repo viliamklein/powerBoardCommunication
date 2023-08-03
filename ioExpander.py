@@ -106,16 +106,16 @@ if __name__ == "__main__":
         elif args.action == "off":
             if args.deviceName:
                 if args.deviceName == "mc1":
-                    io.turnOFFChannel(io.mc1switch)
+                    io.turnOffChannel(io.mc1switch)
                     print(io.readOutReg()& 0x0F)
                 elif args.deviceName == "mc2":
-                    io.turnOFFChannel(io.mc2switch)
+                    io.turnOffChannel(io.mc2switch)
                     print(io.readOutReg()& 0x0F)
                 elif args.deviceName == "ob":
-                    io.turnOFFChannel(io.obswitch)
+                    io.turnOffChannel(io.obswitch)
                     print(io.readOutReg()& 0x0F)
                 elif args.deviceName == "fc":
-                    io.turnOFFChannel(io.fcswitch)
+                    io.turnOffChannel(io.fcswitch)
                     print(io.readOutReg()& 0x0F)
                 else:
                     print("Device Name not know")
