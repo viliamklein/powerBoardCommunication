@@ -1,8 +1,8 @@
 from pyftdi import i2c
+import time
+import argparse
 
 class ioswitches:
-
-
     devname = 'ftdi://ftdi:232h:1/1'
     devI2CAddress = 0x41
 
@@ -75,19 +75,64 @@ class ioswitches:
     
 
 if __name__ == "__main__":
+    # set up arguments 
+    # 1st arg should be which device
+    # 2nd arg should be on or off
+    parser = argparse.ArgumentParser(description="Turn ebox things on or off")
+    parser.add_argument("deviceName", choices=["mc1","mc2","ob", "fc"], help="Name of device to turn off. One of mc1, mc2, ob or fc.")
+    parser.add_argument("action", choices=["on", "off"], help="Tell whether to turn given device on or off.")
+    args = parser.parse_args()   
+    
+    if args.action:
+        io = ioswitches()
+        if args.action == "on":
+            if args.deviceName:
+                if args.deviceName == "mc1":
+                    io.turnONChannel(io.mc1switch)
+                    print(io.readOutReg()& 0x0F)
+                elif args.deviceName == "mc2":
+                    io.turnONChannel(io.mc2switch)
+                    print(io.readOutReg()& 0x0F)
+                elif args.deviceName == "ob":
+                    io.turnONChannel(io.obswitch)
+                    print(io.readOutReg()& 0x0F)
+                elif args.deviceName == "fc":
+                    io.turnONChannel(io.fcswitch)
+                    print(io.readOutReg()& 0x0F)
+                else:
+                    print("Device Name not know")
+            else:
+                print("Error, no device name given")
+        elif args.action == "off":
+            if args.deviceName:
+                if args.deviceName == "mc1":
+                    io.turnOFFChannel(io.mc1switch)
+                    print(io.readOutReg()& 0x0F)
+                elif args.deviceName == "mc2":
+                    io.turnOFFChannel(io.mc2switch)
+                    print(io.readOutReg()& 0x0F)
+                elif args.deviceName == "ob":
+                    io.turnOFFChannel(io.obswitch)
+                    print(io.readOutReg()& 0x0F)
+                elif args.deviceName == "fc":
+                    io.turnOFFChannel(io.fcswitch)
+                    print(io.readOutReg()& 0x0F)
+                else:
+                    print("Device Name not know")
+            else:
+                print("Error, no device name given")
+        else:
+            print("Unkown action")
+    else:
+        print("Error, no given action")
+        
+    # io = ioswitches()
+    # print(io.readOutReg() & 0x0F)
+    # io.turnOffChannel(io.mc1switch)
+    # print(io.readOutReg()& 0x0F)
 
-    import time
-
-    io = ioswitches()
-    print(io.readOutReg() & 0x0F)
-    io.turnOffChannel(io.mc1switch)
-    print(io.readOutReg()& 0x0F)
-
-    time.sleep(2)
-    io.turnONChannel(io.mc1switch) 
-    print(io.readOutReg()& 0x0F)
+    # time.sleep(2)
+    # io.turnONChannel(io.mc1switch)
+    # print(io.readOutReg()& 0x0F)
 
     print('Done')
-
-
-
