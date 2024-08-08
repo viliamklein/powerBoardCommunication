@@ -72,7 +72,7 @@ if __name__ == "__main__":
             while True:
                 try:
                     current.readAllChannels()
-                    print(current.convResults)
+                    # print(current.convResults)
                     
                     for val in current.convResults:
                         line += f'{current.convResults[val]}, '
