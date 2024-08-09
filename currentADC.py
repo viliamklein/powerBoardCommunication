@@ -1,5 +1,10 @@
 from pyftdi import i2c
 import datetime
+import threading
+import queue
+import time
+
+from influxdb_client import InfluxDBClient, Point, WriteOptions
 
 class iadc:
 
@@ -56,35 +61,95 @@ class iadc:
             conv = conv | (int(resArray[idx+1]))
             
             self.convResults[idx+1] = conv
+            
+def influx_writer_thread(data_queue,):
+
+    buffer = []
+    buffer_size = 100
+
+    client = InfluxDBClient.from_config_file("influxconfig.ini")
+    time.sleep(3)
+    client.close()
+
+    while True:
+        # Get the data from the queue
+        data = data_queue.get()
+        buffer.append(data)
+
+        # If the buffer has enough lines, write to the file
+        if len(buffer) >= buffer_size:
+            # with open(logfile_name, "a") as file:
+            #     file.write("\n".join(buffer) + "\n")
+            print("write to influx")
+            
+            # Clear the buffer after writing
+            buffer.clear()
+        
+        # Mark the queue task as done
+        data_queue.task_done()
 
 
-if __name__ == "__main__":
-    import time
-    # import json
+def file_writer_thread(sensor_queue, logfile_name):
+    buffer = []
+    buffer_size = 100  # Number of lines to store before writing to the file
 
+    while True:
+        # Get the data from the queue
+        data = sensor_queue.get()
+        buffer.append(data)
+        
+        # If the buffer has enough lines, write to the file
+        if len(buffer) >= buffer_size:
+            with open(logfile_name, "a") as file:
+                file.write("\n".join(buffer) + "\n")
+            
+            # Clear the buffer after writing
+            buffer.clear()
+        
+        # Mark the queue task as done
+        sensor_queue.task_done()
+
+def main():
     line = ""
     current = iadc()
     # for xx in range(10):
 
+    # Create a queue to communicate between threads
+    sensor_queue = queue.Queue()
+    influx_queue = queue.Queue()
 
-    with open('current_log_data.txt', 'w') as ff:
-        try: 
-            while True:
-                try:
-                    current.readAllChannels()
-                    # print(current.convResults)
-                    
-                    for val in current.convResults:
-                        line += f'{current.convResults[val]}, '
+    # Get the current date and time to use in the filename
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    logfile_name = f"{current_time}_current_sensor_data.log"
 
-                    line += '\n'
-                    ff.write(line)
-                    line = ""
+    # Start the file-writing thread with the logfile name
+    threading.Thread(target=file_writer_thread, args=(sensor_queue, logfile_name), daemon=True).start()
+    threading.Thread(target=influx_writer_thread, args=(sensor_queue, ), daemon=True).start()
+    
+    runflag = True
+    try:
+        while runflag:
+            try:
+                current.readAllChannels()
+                # print(current.convResults)
                 
-                except i2c.I2cNackError:
-                    pass
-                
-                time.sleep(0.075)
+                for val in current.convResults:
+                    line += f'{current.convResults[val]}, '
+
+                # line += '\n'
+                sensor_queue.put(line)
+                # ff.write(line)
+                line = ""
+            
+            except i2c.I2cNackError:
+                pass
+            
+            time.sleep(0.075)
         
-        except KeyboardInterrupt:
-            print("done")
+    except KeyboardInterrupt:
+        runflag = False
+        
+    print('Done with current logging')
+
+if __name__ == "__main__":
+    main()
