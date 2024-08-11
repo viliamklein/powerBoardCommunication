@@ -68,8 +68,7 @@ def influx_writer_thread(data_queue,):
     buffer_size = 100
 
     with InfluxDBClient.from_config_file("influxconfig.ini") as client:
-    # time.sleep(3)
-    # client.close()
+
         with client.write_api(write_options=WriteOptions(batch_size=200, flush_interval=100)) as write_api:
 
             while True:
@@ -84,12 +83,15 @@ def influx_writer_thread(data_queue,):
                     print("write to influx")
                     for data in buffer:
                         line = data.split(',')
+                        tt = int(datetime.datetime.strptime(line[-2], ' %Y-%m-%d %H:%M:%S.%f').timestamp()*1E9)
+                        print(line)
                         dp = Point('CurrentADC') \
                         .tag("type", "testing") \
                         .field("Chan0", float(line[0])) \
-                        .time()
+                        .time(tt)
 
-                        dp.to_line_protocol()
+                        print(dp.to_line_protocol())
+                        break
                     
                     # Clear the buffer after writing
                     buffer.clear()
@@ -97,8 +99,6 @@ def influx_writer_thread(data_queue,):
                 # Mark the queue task as done
                 data_queue.task_done()
         
-    # client.close()
-
 
 def file_writer_thread(sensor_queue, logfile_name):
     buffer = []
