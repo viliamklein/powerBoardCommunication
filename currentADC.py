@@ -67,26 +67,37 @@ def influx_writer_thread(data_queue,):
     buffer = []
     buffer_size = 100
 
-    client = InfluxDBClient.from_config_file("influxconfig.ini")
-    time.sleep(3)
-    client.close()
+    with InfluxDBClient.from_config_file("influxconfig.ini") as client:
+    # time.sleep(3)
+    # client.close()
+        with client.write_api(write_options=WriteOptions(batch_size=200, flush_interval=100)) as write_api:
 
-    while True:
-        # Get the data from the queue
-        data = data_queue.get()
-        buffer.append(data)
+            while True:
+                # Get the data from the queue
+                data = data_queue.get()
+                buffer.append(data)
 
-        # If the buffer has enough lines, write to the file
-        if len(buffer) >= buffer_size:
-            # with open(logfile_name, "a") as file:
-            #     file.write("\n".join(buffer) + "\n")
-            print("write to influx")
-            
-            # Clear the buffer after writing
-            buffer.clear()
+                # If the buffer has enough lines, write to the file
+                if len(buffer) >= buffer_size:
+                    # with open(logfile_name, "a") as file:
+                    #     file.write("\n".join(buffer) + "\n")
+                    print("write to influx")
+                    for data in buffer:
+                        line = data.split(',')
+                        dp = Point('CurrentADC') \
+                        .tag("type", "testing") \
+                        .field("Chan0", float(line[0])) \
+                        .time()
+
+                        dp.to_line_protocol()
+                    
+                    # Clear the buffer after writing
+                    buffer.clear()
+                
+                # Mark the queue task as done
+                data_queue.task_done()
         
-        # Mark the queue task as done
-        data_queue.task_done()
+    # client.close()
 
 
 def file_writer_thread(sensor_queue, logfile_name):
@@ -124,7 +135,7 @@ def main():
 
     # Start the file-writing thread with the logfile name
     threading.Thread(target=file_writer_thread, args=(sensor_queue, logfile_name), daemon=True).start()
-    threading.Thread(target=influx_writer_thread, args=(sensor_queue, ), daemon=True).start()
+    threading.Thread(target=influx_writer_thread, args=(influx_queue, ), daemon=True).start()
     
     runflag = True
     try:
@@ -138,6 +149,7 @@ def main():
 
                 # line += '\n'
                 sensor_queue.put(line)
+                influx_queue.put(line)
                 # ff.write(line)
                 line = ""
             
