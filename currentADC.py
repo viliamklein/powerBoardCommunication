@@ -69,7 +69,7 @@ def influx_writer_thread(data_queue,):
 
     with InfluxDBClient.from_config_file("influxconfig.ini") as client:
 
-        with client.write_api(write_options=WriteOptions(batch_size=200, flush_interval=100)) as write_api:
+        with client.write_api(write_options=WriteOptions(batch_size=200, flush_interval=100)) as writer:
 
             while True:
                 # Get the data from the queue
@@ -81,19 +81,28 @@ def influx_writer_thread(data_queue,):
                     # with open(logfile_name, "a") as file:
                     #     file.write("\n".join(buffer) + "\n")
                     print("write to influx")
+                    points = []
                     for data in buffer:
                         line = data.split(',')
                         tt = int(datetime.datetime.strptime(line[-2], ' %Y-%m-%d %H:%M:%S.%f').timestamp()*1E9)
-                        print(line)
+                        # print(line)
                         dp = Point('CurrentADC') \
                         .tag("type", "testing") \
                         .field("Chan0", float(line[0])) \
+                        .field("Chan1", float(line[1])) \
+                        .field("Chan2", float(line[2])) \
+                        .field("Chan3", float(line[3])) \
+                        .field("Chan4", float(line[4])) \
+                        .field("Chan5", float(line[5])) \
+                        .field("Chan6", float(line[6])) \
+                        .field("Chan7", float(line[7])) \
                         .time(tt)
 
-                        print(dp.to_line_protocol())
-                        break
+                        points.append(dp.to_line_protocol())
+                        # break
                     
                     # Clear the buffer after writing
+                    writer.write(record=points)
                     buffer.clear()
                 
                 # Mark the queue task as done
