@@ -55,17 +55,18 @@ class iadc:
 
         for idx, xx in enumerate(resArray[::2]):
             chanNum = (int(xx) & 0x70) >> 4
-            # print(f'Channel Number {chanNum:02d}: ', end='')
+            # print(f'Channel Number {chanNum:02d} ', end=' ')
 
             conv = (int(xx) & 0x0F) << 8
             conv = conv | (int(resArray[idx+1]))
             
             self.convResults[idx+1] = conv
+        # print("")
             
 def influx_writer_thread(data_queue,):
 
     buffer = []
-    buffer_size = 100
+    buffer_size = 50
 
     with InfluxDBClient.from_config_file("influxconfig.ini") as client:
 
@@ -80,7 +81,7 @@ def influx_writer_thread(data_queue,):
                 if len(buffer) >= buffer_size:
                     # with open(logfile_name, "a") as file:
                     #     file.write("\n".join(buffer) + "\n")
-                    print("write to influx")
+                    # print("write to influx")
                     points = []
                     for data in buffer:
                         line = data.split(',')
@@ -88,21 +89,20 @@ def influx_writer_thread(data_queue,):
                         # print(line)
                         dp = Point('CurrentADC') \
                         .tag("type", "testing") \
-                        .field("Chan0", float(line[0])) \
-                        .field("Chan1", float(line[1])) \
-                        .field("Chan2", float(line[2])) \
-                        .field("Chan3", float(line[3])) \
-                        .field("Chan4", float(line[4])) \
-                        .field("Chan5", float(line[5])) \
-                        .field("Chan6", float(line[6])) \
-                        .field("Chan7", float(line[7])) \
+                        .field("5V", float(line[0])) \
+                        .field("MC2", float(line[1])) \
+                        .field("12V", float(line[2])) \
+                        .field("MC1", float(line[3])) \
+                        .field("24V", float(line[4])) \
+                        .field("OB", float(line[5])) \
+                        .field("Battery", float(line[6])) \
                         .time(tt)
 
                         points.append(dp.to_line_protocol())
                         # break
                     
                     # Clear the buffer after writing
-                    writer.write(record=points)
+                    writer.write(bucket="Powerboard Current Data", record=points)
                     buffer.clear()
                 
                 # Mark the queue task as done
