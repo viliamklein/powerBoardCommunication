@@ -3,6 +3,9 @@ import datetime
 import threading
 import queue
 import time
+import socket
+import syslog
+import traceback
 
 from influxdb_client import InfluxDBClient, Point, WriteOptions
 
@@ -62,51 +65,132 @@ class iadc:
             
             self.convResults[idx+1] = conv
         # print("")
+
+
+def write_to_downlink(data_queue):
+
+    buffer = []
+    buffer_size = 50
+    count = 0
+
+    while True:
+        # Get the data from the queue
+        data = data_queue.get()
+        buffer.append(data)
+
+        # If the buffer has enough lines, write to the file
+        if len(buffer) >= buffer_size:
+
+            points = []
+            for data in buffer:
+
+                line = data.split(',')
+                tt = int(datetime.datetime.strptime(line[-2], ' %Y-%m-%d %H:%M:%S.%f').timestamp()*1E9)
+                dp = Point('CurrentADC') \
+                .tag("type", "testing") \
+                .field("5V", float(line[0])) \
+                .field("MC2", float(line[1])) \
+                .field("12V", float(line[2])) \
+                .field("MC1", float(line[3])) \
+                .field("24V", float(line[4])) \
+                .field("OB", float(line[5])) \
+                .field("Battery", float(line[6])) \
+                .time(tt)
+                
+                points.append(dp.to_line_protocol())
+
+            # print(points[0])
+            # print("Sending data to socket")
+            
+            
+            send_strings_to_socket(points, host='10.40.0.32', port=9991)
+            buffer.clear()
+
+
+def log_to_journal(message, level=syslog.LOG_INFO):
+    # Log the message to syslog (which is captured by journalctl)
+    syslog.syslog(level, message)
+
+def send_strings_to_socket(strings, host='10.40.0.32', port=9991):
+    try:
+        # Create a TCP socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # Connect to the server
+            s.connect((host, port))
+
+            # Send each string in the list
+            for string in strings:
+                message = string + '\n'  # Add a newline as a delimiter
+                s.sendall(message.encode('utf-8'))  # Send the string as bytes
+
+    except Exception as e:
+        # Log the exception details to journalctl
+        error_message = f"Failed to connect or send data: {str(e)}\n" + traceback.format_exc()
+        log_to_journal(error_message, level=syslog.LOG_ERR)
+    
+    finally:
+        debug_message = f"Sent data to downlink"
+        log_to_journal(debug_message, level=syslog.LOG_INFO)
+
             
 def influx_writer_thread(data_queue,):
 
     buffer = []
     buffer_size = 50
+    count = 0
 
-    with InfluxDBClient.from_config_file("influxconfig.ini") as client:
+    try: 
+        
+        with InfluxDBClient.from_config_file("influxconfig.ini") as client:
 
-        with client.write_api(write_options=WriteOptions(batch_size=200, flush_interval=100)) as writer:
+            with client.write_api(write_options=WriteOptions(batch_size=200, flush_interval=100)) as writer:
 
-            while True:
-                # Get the data from the queue
-                data = data_queue.get()
-                buffer.append(data)
+                while True:
+                    # Get the data from the queue
+                    data = data_queue.get()
+                    buffer.append(data)
 
-                # If the buffer has enough lines, write to the file
-                if len(buffer) >= buffer_size:
-                    # with open(logfile_name, "a") as file:
-                    #     file.write("\n".join(buffer) + "\n")
-                    # print("write to influx")
-                    points = []
-                    for data in buffer:
-                        line = data.split(',')
-                        tt = int(datetime.datetime.strptime(line[-2], ' %Y-%m-%d %H:%M:%S.%f').timestamp()*1E9)
-                        # print(line)
-                        dp = Point('CurrentADC') \
-                        .tag("type", "testing") \
-                        .field("5V", float(line[0])) \
-                        .field("MC2", float(line[1])) \
-                        .field("12V", float(line[2])) \
-                        .field("MC1", float(line[3])) \
-                        .field("24V", float(line[4])) \
-                        .field("OB", float(line[5])) \
-                        .field("Battery", float(line[6])) \
-                        .time(tt)
+                    # If the buffer has enough lines, write to the file
+                    if len(buffer) >= buffer_size:
+                        # with open(logfile_name, "a") as file:
+                        #     file.write("\n".join(buffer) + "\n")
+                        # print("write to influx")
+                        points = []
+                        for data in buffer:
+                            line = data.split(',')
+                            tt = int(datetime.datetime.strptime(line[-2], ' %Y-%m-%d %H:%M:%S.%f').timestamp()*1E9)
+                            # print(line)
+                            dp = Point('CurrentADC') \
+                            .tag("type", "testing") \
+                            .field("5V", float(line[0])) \
+                            .field("MC2", float(line[1])) \
+                            .field("12V", float(line[2])) \
+                            .field("MC1", float(line[3])) \
+                            .field("24V", float(line[4])) \
+                            .field("OB", float(line[5])) \
+                            .field("Battery", float(line[6])) \
+                            .time(tt)
 
-                        points.append(dp.to_line_protocol())
-                        # break
+                            points.append(dp.to_line_protocol())
+                            # break
+                        
+                        # Clear the buffer after writing
+                        writer.write(bucket="Powerboard Current Data", record=points)
+                        print(f"{count:04d}\tWrote current to influx", end='\r')
+                        count = count + 1
+                        buffer.clear()
+                        
+                        debug_message = f"Sent current data to influx"
+                        log_to_journal(debug_message, level=syslog.LOG_INFO)
                     
-                    # Clear the buffer after writing
-                    writer.write(bucket="Powerboard Current Data", record=points)
-                    buffer.clear()
-                
-                # Mark the queue task as done
-                data_queue.task_done()
+                    # Mark the queue task as done
+                    data_queue.task_done()
+
+    except Exception as ee:
+        # Log the exception details to journalctl
+        error_message = f"Failed to send influx data to flight computer: {str(ee)}\n" + traceback.format_exc()
+        log_to_journal(error_message, level=syslog.LOG_ERR)
+    
         
 
 def file_writer_thread(sensor_queue, logfile_name):
@@ -135,8 +219,8 @@ def main():
     # for xx in range(10):
 
     # Create a queue to communicate between threads
-    sensor_queue = queue.Queue()
-    influx_queue = queue.Queue()
+    sensor_queue = queue.Queue(maxsize=1000)
+    influx_queue = queue.Queue(maxsize=1000)
 
     # Get the current date and time to use in the filename
     current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -145,6 +229,7 @@ def main():
     # Start the file-writing thread with the logfile name
     threading.Thread(target=file_writer_thread, args=(sensor_queue, logfile_name), daemon=True).start()
     threading.Thread(target=influx_writer_thread, args=(influx_queue, ), daemon=True).start()
+    threading.Thread(target=write_to_downlink, args=(influx_queue, ), daemon=True).start()
     
     runflag = True
     try:
