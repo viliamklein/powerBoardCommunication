@@ -1,0 +1,15 @@
+[Unit]
+Description=Service for reading current sensors
+After=network.target home.mount
+
+[Service]
+ExecStart=/home/pi/source/py311Env/bin/python /home/pi/code/powerboard/currentADC.py /home/pi/code/powerboard/influxconfig.ini
+Restart=on-failure
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=CurrentMonitor
+User=pi
+WorkingDirectory=/home/pi/code/powerboard/
+
+[Install]
+WantedBy=multi-user.target

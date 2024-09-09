@@ -6,6 +6,7 @@ import time
 import socket
 import syslog
 import traceback
+import sys
 
 from influxdb_client import InfluxDBClient, Point, WriteOptions
 
@@ -133,7 +134,7 @@ def send_strings_to_socket(strings, host='10.40.0.32', port=9991):
         log_to_journal(debug_message, level=syslog.LOG_INFO)
 
             
-def influx_writer_thread(data_queue,):
+def influx_writer_thread(data_queue, configFile):
 
     buffer = []
     buffer_size = 50
@@ -141,7 +142,7 @@ def influx_writer_thread(data_queue,):
 
     try: 
         
-        with InfluxDBClient.from_config_file("influxconfig.ini") as client:
+        with InfluxDBClient.from_config_file(configFile) as client:
 
             with client.write_api(write_options=WriteOptions(batch_size=200, flush_interval=100)) as writer:
 
@@ -176,7 +177,7 @@ def influx_writer_thread(data_queue,):
                         
                         # Clear the buffer after writing
                         writer.write(bucket="Powerboard Current Data", record=points)
-                        print(f"{count:04d}\tWrote current to influx", end='\r')
+                        # print(f"{count:04d}\tWrote current to influx", end='\r')
                         count = count + 1
                         buffer.clear()
                         
@@ -213,10 +214,13 @@ def file_writer_thread(sensor_queue, logfile_name):
         # Mark the queue task as done
         sensor_queue.task_done()
 
-def main():
+def main(args):
+
+
     line = ""
     current = iadc()
     # for xx in range(10):
+    configFile = args[0]
 
     # Create a queue to communicate between threads
     sensor_queue = queue.Queue(maxsize=1000)
@@ -228,7 +232,7 @@ def main():
 
     # Start the file-writing thread with the logfile name
     threading.Thread(target=file_writer_thread, args=(sensor_queue, logfile_name), daemon=True).start()
-    threading.Thread(target=influx_writer_thread, args=(influx_queue, ), daemon=True).start()
+    threading.Thread(target=influx_writer_thread, args=(influx_queue, configFile), daemon=True).start()
     threading.Thread(target=write_to_downlink, args=(influx_queue, ), daemon=True).start()
     
     runflag = True
@@ -258,4 +262,4 @@ def main():
     print('Done with current logging')
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
